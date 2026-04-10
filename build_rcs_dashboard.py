@@ -23,6 +23,7 @@ DEFAULT_CSV  = (
     ' - klaviyo-rcs_resource_order_audit-Q1_April_2026_with_duration.csv'
 )
 LAUNCH = datetime(2026, 2, 24)   # Week 0 — update if launch date changes
+HOURS_COL = 'duration hours'     # Column name for duration in hours
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 def parse_dt(s):
@@ -108,7 +109,11 @@ def load(csv_path):
 
 # ── COMPUTE ALL METRICS ──────────────────────────────────────────────────────
 def compute(rows):
-    ALL_WEEKS = list(range(-4, 6))   # Wk -4 … Wk +5; extend if needed
+    # Derive week range dynamically from the data
+    all_event_weeks = [r['_week'] for r in rows if r['_week'] is not None]
+    min_wk = min(all_event_weeks)
+    max_wk = max(all_event_weeks)
+    ALL_WEEKS = list(range(min_wk, max_wk + 1))
 
     # --- Submission week per UUID (earliest event) ---
     uuid_min_dt = {}
@@ -235,7 +240,7 @@ def compute(rows):
         if wk is None:
             continue
         try:
-            h = float(r['hours'])
+            h = float(r[HOURS_COL])
         except (ValueError, KeyError):
             continue
         if sc == '2 - IN INFOBIP REVIEW':
