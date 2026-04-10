@@ -8,6 +8,15 @@ Reads the CSV, recomputes all metrics, and updates the data variables
 in rcs_dashboard.html (in the same folder as this script) in-place.
 
 If the CSV path is omitted, it defaults to the original Q1 file.
+
+Snowflake credentials (set as environment variables):
+    SF_ACCOUNT   — e.g. klaviyo.us-east-1
+    SF_USER      — your Klaviyo email
+    SF_PASSWORD  — your password  (or leave blank to use SF_AUTHENTICATOR)
+    SF_AUTHENTICATOR — set to 'externalbrowser' for SSO (default if no password)
+    SF_WAREHOUSE — e.g. ANALYST_WH
+    SF_DATABASE  — KLAVIYO  (default)
+    SF_ROLE      — optional
 """
 
 import csv, json, re, sys, os
@@ -22,8 +31,101 @@ DEFAULT_CSV  = (
     'klaviyo-rcs_resource_order_audit-Q1_April_2026_with_duration'
     ' - klaviyo-rcs_resource_order_audit-Q1_April_2026_with_duration.csv'
 )
-LAUNCH = datetime(2026, 2, 24)   # Week 0 — update if launch date changes
-HOURS_COL = 'duration hours'     # Column name for duration in hours
+LAUNCH    = datetime(2026, 2, 24)   # Week 0 — update if launch date changes
+HOURS_COL = 'duration hours'        # Column name for duration in hours
+
+# ── SNOWFLAKE MRR LOOKUP ─────────────────────────────────────────────────────
+def fetch_mrr(entity_ids):
+    """
+    Query Snowflake for company name, email MRR, SMS MRR for a list of entity IDs.
+    Returns dict: { entity_id -> { company_name, email_mrr, sms_mrr, combined_mrr } }
+    Skips gracefully if snowflake-connector-python is not installed or creds are missing.
+    Install: pip install snowflake-connector-python
+    """
+    try:
+        import snowflake.connector
+    except ImportError:
+        print('  SKIP Snowflake: snowflake-connector-python not installed.')
+        print('  Run: pip install snowflake-connector-python')
+        return {}
+
+    account   = os.environ.get('SF_ACCOUNT')
+    user      = os.environ.get('SF_USER')
+    password  = os.environ.get('SF_PASSWORD', '')
+    auth      = os.environ.get('SF_AUTHENTICATOR', 'externalbrowser')
+    warehouse = os.environ.get('SF_WAREHOUSE', '')
+    database  = os.environ.get('SF_DATABASE', 'KLAVIYO')
+    role      = os.environ.get('SF_ROLE', '')
+
+    if not account or not user:
+        print('  SKIP Snowflake: set SF_ACCOUNT and SF_USER environment variables.')
+        return {}
+
+    try:
+        conn_params = dict(account=account, user=user, database=database)
+        if password:
+            conn_params['password'] = password
+        else:
+            conn_params['authenticator'] = auth
+        if warehouse: conn_params['warehouse'] = warehouse
+        if role:      conn_params['role'] = role
+
+        print(f'  Connecting to Snowflake ({account})...')
+        conn = snowflake.connector.connect(**conn_params)
+        cur  = conn.cursor()
+
+        # Build VALUES list in chunks to avoid query size limits
+        CHUNK = 500
+        results = {}
+        ids = list(entity_ids)
+        for i in range(0, len(ids), CHUNK):
+            chunk = ids[i:i+CHUNK]
+            values = ','.join(f"('{eid}')" for eid in chunk)
+            sql = f"""
+            WITH entity_ids AS (SELECT col1 AS entity_id FROM (VALUES {values}) t(col1)),
+            latest_ds AS (SELECT MAX(DS_TREE) AS max_ds FROM KLAVIYO.STAGING.INT_METRICS_TREE_ACCOUNTS),
+            email_mrr AS (
+                SELECT KLAVIYO_ACCOUNT_ID, ENDING_MRR AS email_mrr
+                FROM KLAVIYO.STAGING.INT_METRICS_TREE_ACCOUNTS, latest_ds
+                WHERE PRODUCT = 'Email' AND DS_TREE = max_ds
+            ),
+            sms_mrr AS (
+                SELECT KLAVIYO_ACCOUNT_ID, ENDING_MRR AS sms_mrr
+                FROM KLAVIYO.STAGING.INT_METRICS_TREE_ACCOUNTS, latest_ds
+                WHERE PRODUCT = 'SMS' AND DS_TREE = max_ds
+            ),
+            sfdc AS (
+                SELECT PRODUCT_KLAVIYO_ACCOUNT_ID_C AS entity_id, NAME AS company_name
+                FROM KLAVIYO.SALESFORCE.ACCOUNT
+                WHERE PRODUCT_KLAVIYO_ACCOUNT_ID_C IS NOT NULL AND IS_DELETED = FALSE
+            )
+            SELECT e.entity_id,
+                   s.company_name,
+                   ROUND(em.email_mrr, 2)  AS email_mrr,
+                   ROUND(sm.sms_mrr, 2)    AS sms_mrr,
+                   ROUND(COALESCE(em.email_mrr,0) + COALESCE(sm.sms_mrr,0), 2) AS combined_mrr
+            FROM entity_ids e
+            LEFT JOIN sfdc      s  ON e.entity_id = s.entity_id
+            LEFT JOIN email_mrr em ON e.entity_id = em.KLAVIYO_ACCOUNT_ID
+            LEFT JOIN sms_mrr   sm ON e.entity_id = sm.KLAVIYO_ACCOUNT_ID
+            """
+            cur.execute(sql)
+            for row in cur.fetchall():
+                eid, name, em, sm, comb = row
+                results[eid] = {
+                    'company_name': name or '',
+                    'email_mrr':    float(em)   if em   is not None else None,
+                    'sms_mrr':      float(sm)   if sm   is not None else None,
+                    'combined_mrr': float(comb) if comb is not None else None,
+                }
+        cur.close()
+        conn.close()
+        print(f'  Snowflake: fetched MRR for {len(results)} of {len(ids)} entities.')
+        return results
+
+    except Exception as e:
+        print(f'  SKIP Snowflake: {e}')
+        return {}
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 def parse_dt(s):
@@ -252,7 +354,15 @@ def compute(rows):
 
     timing_weeks = sorted(set(wait_h) | set(rej_h) | set(app_h))
 
-    # 8. Records for modal
+    # 8. Entity ID per sender (for MRR lookup)
+    sender_entity = {}
+    for r in rows:
+        sn  = r['senderName']
+        eid = r.get('entityId', '').strip()
+        if eid and sn not in sender_entity:
+            sender_entity[sn] = eid
+
+    # 9. Records for modal (MRR added later in main after Snowflake fetch)
     records = []
     for sn, reasons in sender_rej_reasons.items():
         all_cats = set()
@@ -261,11 +371,17 @@ def compute(rows):
         wk  = sender_sub_week.get(sn)
         st  = STATUS_LABELS.get(sender_status.get(sn, ''), sender_status.get(sn, ''))
         records.append({
-            's':  sn,
-            'w':  week_label(wk) if wk is not None else 'Unknown',
-            'st': st,
-            'c':  sorted(all_cats),
-            'r':  ' | '.join(r for r in reasons[:3] if r),
+            's':   sn,
+            'eid': sender_entity.get(sn, ''),
+            'w':   week_label(wk) if wk is not None else 'Unknown',
+            'st':  st,
+            'c':   sorted(all_cats),
+            'r':   ' | '.join(r for r in reasons[:3] if r),
+            # MRR fields — populated after Snowflake fetch
+            'co':  '',    # company name
+            'em':  None,  # email MRR
+            'sm':  None,  # SMS MRR
+            'mrr': None,  # combined MRR
         })
     records.sort(key=lambda r: r['w'])
 
@@ -289,6 +405,7 @@ def compute(rows):
         app_h          = app_h,
         timing_weeks   = timing_weeks,
         records        = records,
+        sender_entity  = sender_entity,
     )
 
 # ── BUILD JS VARIABLE BLOCKS ─────────────────────────────────────────────────
@@ -406,6 +523,23 @@ if __name__ == '__main__':
     m = compute(rows)
     D, rejWow, ibTiming, ibData, output = build_js_vars(m)
 
+    # Fetch MRR from Snowflake
+    print('Fetching MRR from Snowflake...')
+    entity_ids = set(m['sender_entity'].values())
+    mrr_data   = fetch_mrr(entity_ids)
+
+    # Merge MRR into records
+    if mrr_data:
+        for rec in m['records']:
+            eid = rec.get('eid', '')
+            if eid in mrr_data:
+                d = mrr_data[eid]
+                rec['co']  = d['company_name']
+                rec['em']  = d['email_mrr']
+                rec['sm']  = d['sms_mrr']
+                rec['mrr'] = d['combined_mrr']
+        print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} records.')
+
     print(f'Reading HTML: {HTML_PATH}')
     with open(HTML_PATH, encoding='utf-8') as f:
         html = f.read()
@@ -425,6 +559,9 @@ if __name__ == '__main__':
     with open(HTML_PATH, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    n_brands  = len(m['sender_sub_week'] if 'sender_sub_week' in m else {})
     print(f'\nDone. {len(m["records"])} rejected sender records embedded.')
+    if mrr_data:
+        print(f'MRR data included for {len(mrr_data)} entities.')
+    else:
+        print('MRR data not included (Snowflake unavailable — set SF_ACCOUNT and SF_USER to enable).')
     print('Open rcs_dashboard.html in your browser to view.')

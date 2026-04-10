@@ -102,13 +102,13 @@
 
   <!-- KPI Cards -->
   <div class="kpi-grid">
-    <div class="kpi-card brands"><div class="kpi-val">1,001</div><div class="kpi-label">Unique Brands</div></div>
-    <div class="kpi-card submissions"><div class="kpi-val">1,290</div><div class="kpi-label">Total Submissions</div></div>
-    <div class="kpi-card pending"><div class="kpi-val">213</div><div class="kpi-label">Pending IB Review</div></div>
+    <div class="kpi-card brands"><div class="kpi-val">1011</div><div class="kpi-label">Unique Brands</div></div>
+    <div class="kpi-card submissions"><div class="kpi-val">1299</div><div class="kpi-label">Total Submissions</div></div>
+    <div class="kpi-card pending"><div class="kpi-val">215</div><div class="kpi-label">Pending IB Review</div></div>
     <div class="kpi-card ib-review"><div class="kpi-val">10</div><div class="kpi-label">In IB Review</div></div>
-    <div class="kpi-card carrier"><div class="kpi-val">138</div><div class="kpi-label">In Carrier Review</div></div>
+    <div class="kpi-card carrier"><div class="kpi-val">139</div><div class="kpi-label">In Carrier Review</div></div>
     <div class="kpi-card approved"><div class="kpi-val">73</div><div class="kpi-label">Approved</div></div>
-    <div class="kpi-card rejected"><div class="kpi-val">567</div><div class="kpi-label">Rejected</div></div>
+    <div class="kpi-card rejected"><div class="kpi-val">574</div><div class="kpi-label">Rejected</div></div>
   </div>
 
   <!-- Row 1: Weekly submissions -->
@@ -249,6 +249,7 @@
             <th onclick="sortBy('s')">Sender ↕</th>
             <th onclick="sortBy('w')">Sub. Week ↕</th>
             <th onclick="sortBy('st')">Current Status ↕</th>
+            <th onclick="sortBy('mrr')" title="Combined Email + SMS MRR. Hover for breakdown.">MRR ↕</th>
             <th>Rejection Reason</th>
           </tr>
         </thead>
@@ -267,7 +268,7 @@
 
 <script>
 // ── DATA ────────────────────────────────────────────────────────────────────
-const D = {"wlabels": ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)"], "total_sub": [2, 9, 3, 7, 283, 187, 168, 189, 222, 220], "first_time": [2, 9, 3, 6, 239, 152, 140, 155, 168, 135], "status_labels": ["Pending IB Review", "In IB Review", "In Carrier Review", "Approved", "Rejected"], "status_values": [213, 10, 138, 73, 575], "rej_cat_labels": ["Privacy Policy", "Brand Contact", "Agent Description", "Web/Opt-in", "General Compliance", "Phone Number", "Other", "Video/Media", "Missing Fields", "Tax/Company Info", "Cancelled/Withdrawn"], "rej_cat_values": [310, 289, 285, 266, 231, 115, 64, 62, 13, 4, 3], "approved_n": 73, "rejected_n": 575};
+const D = {"wlabels": ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)", "Wk +6 (Apr 07)"], "total_sub": [2, 9, 3, 7, 285, 191, 168, 189, 222, 220, 3], "first_time": [2, 9, 3, 6, 240, 152, 140, 155, 168, 135, 1], "status_labels": ["Pending IB Review", "In IB Review", "In Carrier Review", "Approved", "Rejected"], "status_values": [215, 10, 139, 73, 574], "approved_n": 73, "rejected_n": 574, "rej_cat_labels": ["Privacy Policy", "Brand Contact", "Agent Description", "Web/Opt-in", "General Compliance", "Phone Number", "Other", "Video/Media", "Missing Fields", "Tax/Company Info", "Cancelled/Withdrawn"], "rej_cat_values": [310, 289, 285, 266, 231, 115, 64, 62, 13, 4, 3]};
 
 // Rejection reasons by week — exact counts from CSV (distinct senders, grouped by submission week)
 const rejWow = {"weeks": ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)"], "categories": {"Privacy Policy": [0, 0, 1, 70, 39, 58, 49, 73, 20], "Brand Contact": [0, 0, 0, 79, 71, 53, 36, 41, 9], "Agent Description": [0, 0, 0, 109, 42, 41, 38, 43, 12], "Web/Opt-in": [0, 0, 1, 57, 40, 48, 48, 57, 15], "General Compliance": [0, 0, 1, 53, 38, 44, 34, 46, 15], "Phone Number": [0, 0, 0, 59, 30, 13, 6, 6, 1], "Other": [1, 0, 0, 18, 16, 9, 16, 2, 2], "Video/Media": [0, 0, 0, 35, 26, 0, 0, 0, 1], "Missing Fields": [0, 0, 0, 1, 0, 2, 1, 0, 9], "Tax/Company Info": [0, 1, 0, 2, 1, 0, 0, 0, 0], "Cancelled/Withdrawn": [0, 0, 0, 3, 0, 0, 0, 0, 0]}};
@@ -348,10 +349,10 @@ new Chart(document.getElementById('weeklyChart'), {
 });
 
 // ── 1b. WEEKLY OUTPUT ───────────────────────────────────────────────────────
-const outputLabels = ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)"];
-const outputRej      = [0, 0, 2, 1, 101, 98, 23, 77, 181, 384];
-const outputCarrier  = [0, 8, 3, 8, 31, 25, 23, 32, 49, 64];
-const outputApproved = [0, 0, 1, 2, 4, 2, 17, 24, 20, 5];
+const outputLabels = ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)", "Wk +6 (Apr 07)"];
+const outputRej      = [0, 0, 2, 1, 103, 98, 23, 76, 179, 379, 1];
+const outputCarrier  = [0, 7, 3, 7, 31, 24, 23, 30, 49, 63, 1];
+const outputApproved = [0, 0, 1, 2, 4, 2, 17, 24, 18, 5, 0];
 
 new Chart(document.getElementById('weeklyOutputChart'), {
   type: 'line',
@@ -519,7 +520,7 @@ const rejCatChart = new Chart(document.getElementById('rejCatChart'), {
 document.getElementById('rejCatChart').style.cursor = 'pointer';
 
 // ── 5. IB THROUGHPUT ────────────────────────────────────────────────────────
-const ibData = {"weeks": ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)"], "ib_received": [2, 9, 3, 7, 288, 188, 172, 189, 229, 199], "completed_same": [0, 6, 1, 7, 132, 35, 6, 19, 27, 76], "completed_prior": [0, 2, 4, 2, 0, 88, 40, 90, 203, 372]};
+const ibData = {"weeks": ["Wk -4 (Jan 27)", "Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)", "Wk +6 (Apr 07)"], "ib_received": [2, 9, 3, 7, 284, 192, 168, 188, 222, 197, 3], "completed_same": [0, 6, 1, 6, 134, 35, 6, 17, 27, 76, 0], "completed_prior": [0, 1, 4, 2, 0, 87, 40, 89, 201, 366, 2]};
 
 new Chart(document.getElementById('ibThroughputChart'), {
   type: 'bar',
@@ -583,7 +584,7 @@ new Chart(document.getElementById('ibThroughputChart'), {
 });
 
 // ── 6. IB TIMING BY WEEK (LINE) ──────────────────────────────────────────────
-const ibTiming = {"weeks": ["Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)"], "wait_mean": [20.5, 37.8, 29.6, 35.1, 126.2, 239.4, 298.5, 365.0, 52.8], "rej_mean": [null, 81.7, 0.0, 8.5, 11.1, 13.1, 87.0, 65.7, 9.0], "app_mean": [5.1, 10.4, 9.4, 6.3, 5.3, 0.1, 0.1, 1.0, 0.2]};
+const ibTiming = {"weeks": ["Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)", "Wk +6 (Apr 07)"], "wait_mean": [20.5, 75.7, 29.6, 38.2, 130.8, 250.0, 305.4, 370.5, 53.8, 0.0], "rej_mean": [null, 81.7, 0.0, 8.4, 11.0, 13.1, 88.1, 66.4, 9.1, 0.0], "app_mean": [5.8, 10.4, 10.8, 6.3, 5.5, 0.1, 0.1, 1.0, 0.2, 0.4]};
 
 new Chart(document.getElementById('ibTimingWowChart'), {
   type: 'line',
@@ -773,21 +774,32 @@ function renderTable() {
   );
 
   rows.sort((a, b) => {
-    const av = a[sortKey] || '', bv = b[sortKey] || '';
-    return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    const av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'mrr') {
+      const an = av ?? -Infinity, bn = bv ?? -Infinity;
+      return sortAsc ? an - bn : bn - an;
+    }
+    const as = av || '', bs = bv || '';
+    return sortAsc ? as.localeCompare(bs) : bs.localeCompare(as);
   });
 
   document.getElementById('modalCount').textContent = `${rows.length} sender${rows.length !== 1 ? 's' : ''} shown`;
 
   const tbody = document.getElementById('modalTableBody');
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td class="sender">${r.s}</td>
+  tbody.innerHTML = rows.map(r => {
+    const mrrFmt = r.mrr != null ? '$' + r.mrr.toLocaleString() : '—';
+    const mrrTitle = r.mrr != null
+      ? `Email: $${(r.em||0).toLocaleString()} | SMS: $${(r.sm||0).toLocaleString()}`
+      : 'MRR unavailable';
+    const coDisplay = r.co ? `<span style="font-size:0.7rem;color:#64748b;display:block">${r.co}</span>` : '';
+    return `<tr>
+      <td class="sender">${r.s}${coDisplay}</td>
       <td>${r.w}</td>
       <td>${statusBadge(r.st)}</td>
+      <td title="${mrrTitle}" style="cursor:default;font-weight:600;color:${r.mrr > 0 ? '#0ea5e9' : '#94a3b8'}">${mrrFmt}</td>
       <td class="reason">${r.r || '—'}</td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function copyAllRecords() {
