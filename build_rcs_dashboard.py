@@ -353,18 +353,17 @@ def build_js_vars(m):
     return D, dict(weeks=wow_weeks_labels, categories=wow_categories), ibTiming, ibData, output
 
 # ── PATCH HTML ───────────────────────────────────────────────────────────────
-def patch(html, var_name, new_value_js, multi_line=True):
+def patch(html, var_name, new_value_js):
     """
     Replace  `const VAR_NAME = <anything>;`  with the new value.
-    Works for both single-line and multi-line JS object/array literals.
+    Uses a lambda replacement to avoid regex interpreting backslashes in JSON.
     """
-    # Match from `const VAR_NAME = ` up to the next top-level `};` or `];`
     pattern = re.compile(
         rf'(const {re.escape(var_name)}\s*=\s*)(\[[\s\S]*?\]|\{{[\s\S]*?\}})(;)',
         re.MULTILINE
     )
-    replacement = rf'\g<1>{new_value_js}\g<3>'
-    new_html, n = pattern.subn(replacement, html, count=1)
+    new_js = new_value_js  # capture for closure
+    new_html, n = pattern.subn(lambda m: m.group(1) + new_js + m.group(3), html, count=1)
     if n == 0:
         print(f'  WARNING: could not find "const {var_name}" — skipped')
     return new_html
@@ -373,16 +372,16 @@ def patch_array(html, var_name, values):
     """Replace a simple `const VAR = [...];` line."""
     js = json.dumps(values)
     pattern = re.compile(rf'(const {re.escape(var_name)}\s*=\s*)(\[[\s\S]*?\])(;)', re.MULTILINE)
-    new_html, n = pattern.subn(rf'\g<1>{js}\g<3>', html, count=1)
+    new_html, n = pattern.subn(lambda m: m.group(1) + js + m.group(3), html, count=1)
     if n == 0:
         print(f'  WARNING: could not find "const {var_name}" — skipped')
     return new_html
 
 def patch_rej_records(html, records):
-    """REJ_RECORDS is huge — replace between known markers."""
+    """REJ_RECORDS — use lambda to prevent regex interpreting backslashes in JSON."""
     records_js = json.dumps(records, ensure_ascii=False)
     pattern = re.compile(r'(const REJ_RECORDS\s*=\s*)(\[[\s\S]*?\])(;)', re.MULTILINE)
-    new_html, n = pattern.subn(rf'\g<1>{records_js}\g<3>', html, count=1)
+    new_html, n = pattern.subn(lambda m: m.group(1) + records_js + m.group(3), html, count=1)
     if n == 0:
         print('  WARNING: could not find REJ_RECORDS — skipped')
     return new_html
