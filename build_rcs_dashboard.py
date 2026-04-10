@@ -162,35 +162,6 @@ def pct(lst, p):
     s = sorted(lst)
     return round(s[int(len(s) * p)], 1)
 
-def categorize(text):
-    if not text or text.strip().lower() in ('n/a', '', 'na'):
-        return []
-    tl = text.lower()
-    cats = []
-    if 'privacy policy' in tl:
-        cats.append('Privacy Policy')
-    if any(x in tl for x in ['agent description', 'sender description',
-                               'description reads as', 'description does not match']):
-        cats.append('Agent Description')
-    if any(x in tl for x in ['opt-in', 'opt in', 'call-to-action', 'web opt', 'cta url']):
-        cats.append('Web/Opt-in')
-    if any(x in tl for x in ['contact email', 'contact mobile', 'brand contact',
-                               'individual email', 'group email', 'group address',
-                               'named individual']):
-        cats.append('Brand Contact')
-    if any(x in tl for x in ['phone number', 'company phone']):
-        cats.append('Phone Number')
-    if any(x in tl for x in ['terms and conditions', 'compliance', 'disclosures', 'frequency']):
-        cats.append('General Compliance')
-    if 'video' in tl:
-        cats.append('Video/Media')
-    if any(x in tl for x in ['tax', 'vat']):
-        cats.append('Tax/Company Info')
-    if any(x in tl for x in ['field is required', 'cannot be empty']):
-        cats.append('Missing Fields')
-    if 'cancel' in tl:
-        cats.append('Cancelled/Withdrawn')
-    return cats if cats else ['Other']
 
 STATUS_LABELS = {
     '1 - PENDING IB REVIEW': 'Pending IB Review',
@@ -266,31 +237,52 @@ def compute(rows):
     for sn, sc in sender_status.items():
         status_counts[sc] += 1
 
-    # 4. Rejection categories (all-time, distinct senders)
-    sender_rej_cats = defaultdict(set)
+    # 4. Rejection categories — read directly from rejection_category column.
+    # Multiple categories may be listed per rejection (comma-separated), so
+    # cat_totals counts category occurrences across all rows (total > # rejections).
+    cat_totals = defaultdict(int)
+    sender_rej_cats = defaultdict(set)   # per-sender set, used for WoW chart
     sender_rej_reasons = defaultdict(list)
     for r in rows:
         if r.get('status clean', '').strip() != '4 - REJECTED':
             continue
-        sn  = r['senderName']
-        rrc = r.get('rejection_reason_combined', '').strip()
-        for c in categorize(rrc):
-            sender_rej_cats[sn].add(c)
-        if rrc and rrc not in sender_rej_reasons[sn]:
-            sender_rej_reasons[sn].append(rrc)
+        sn = r['senderName']
 
-    cat_totals = defaultdict(int)
-    for cats in sender_rej_cats.values():
+        # Collect rejection_reason for modal display
+        rr = r.get('rejection_reason', '').strip()
+        if rr and rr not in sender_rej_reasons[sn]:
+            sender_rej_reasons[sn].append(rr)
+
+        # Parse rejection_category (pipe-separated, e.g. "Privacy Policy | Brand Contact | Web/Opt-in Issues")
+        rc = r.get('rejection_category', '').strip()
+        if rc and rc.lower() not in ('n/a', 'na'):
+            cats = [c.strip() for c in rc.split('|') if c.strip()]
+        else:
+            cats = ['Other']
+
+        # Count each category per row (total > number of rejections)
         for c in cats:
             cat_totals[c] += 1
+
+        # Also track per sender for WoW chart
+        for c in cats:
+            sender_rej_cats[sn].add(c)
+
     sorted_cats = sorted(cat_totals, key=lambda c: -cat_totals[c])
 
-    # 5. Rejection reasons WoW (by sender submission week)
+    # 5. Rejection reasons WoW (by week the rejection event occurred)
     wow = defaultdict(lambda: defaultdict(int))
-    for sn, cats in sender_rej_cats.items():
-        wk = sender_sub_week.get(sn)
+    for r in rows:
+        if r.get('status clean', '').strip() != '4 - REJECTED':
+            continue
+        wk = r['_week']
         if wk is None:
             continue
+        rc = r.get('rejection_category', '').strip()
+        if rc and rc.lower() not in ('n/a', 'na'):
+            cats = [c.strip() for c in rc.split('|') if c.strip()]
+        else:
+            cats = ['Other']
         for c in cats:
             wow[wk][c] += 1
     wow_weeks = sorted(wow.keys())
@@ -365,9 +357,7 @@ def compute(rows):
     # 9. Records for modal (MRR added later in main after Snowflake fetch)
     records = []
     for sn, reasons in sender_rej_reasons.items():
-        all_cats = set()
-        for rrc in reasons:
-            all_cats.update(categorize(rrc))
+        all_cats = sender_rej_cats.get(sn, set())
         wk  = sender_sub_week.get(sn)
         st  = STATUS_LABELS.get(sender_status.get(sn, ''), sender_status.get(sn, ''))
         records.append({
@@ -385,27 +375,54 @@ def compute(rows):
         })
     records.sort(key=lambda r: r['w'])
 
+    # 10. Carrier review senders:
+    # All rows where status clean = '3 - IN CARRIER REVIEW' AND sender's current
+    # status is also '3 - IN CARRIER REVIEW'. Each row is a data point distributed
+    # by duration in state (rounded to 0 decimal places in days).
+    carrier_senders = {sn for sn, sc in sender_status.items() if sc == '3 - IN CARRIER REVIEW'}
+    carrier_records = []
+    for r in rows:
+        if r.get('status clean', '').strip() != '3 - IN CARRIER REVIEW':
+            continue
+        sn = r['senderName']
+        if sn not in carrier_senders:
+            continue
+        try:
+            d = float(r['duration in state (days)'])
+        except (ValueError, KeyError):
+            continue
+        carrier_records.append({
+            's':   sn,
+            'eid': sender_entity.get(sn, ''),
+            'dur': round(d),
+            'co':  '',
+            'em':  None,
+            'sm':  None,
+            'mrr': None,
+        })
+
     return dict(
-        ALL_WEEKS      = ALL_WEEKS,
-        total_sub      = total_sub,
-        first_time     = first_time,
-        status_counts  = status_counts,
-        sorted_cats    = sorted_cats,
-        cat_totals     = cat_totals,
-        wow            = wow,
-        wow_weeks      = wow_weeks,
-        ib_received    = ib_received,
-        ib_to_carrier  = ib_to_carrier,
-        ib_rejected    = ib_rejected,
-        ib_approved    = ib_approved,
-        completed_same = completed_same,
-        completed_prior= completed_prior,
-        wait_h         = wait_h,
-        rej_h          = rej_h,
-        app_h          = app_h,
-        timing_weeks   = timing_weeks,
-        records        = records,
-        sender_entity  = sender_entity,
+        ALL_WEEKS       = ALL_WEEKS,
+        total_sub       = total_sub,
+        first_time      = first_time,
+        status_counts   = status_counts,
+        sorted_cats     = sorted_cats,
+        cat_totals      = cat_totals,
+        wow             = wow,
+        wow_weeks       = wow_weeks,
+        ib_received     = ib_received,
+        ib_to_carrier   = ib_to_carrier,
+        ib_rejected     = ib_rejected,
+        ib_approved     = ib_approved,
+        completed_same  = completed_same,
+        completed_prior = completed_prior,
+        wait_h          = wait_h,
+        rej_h           = rej_h,
+        app_h           = app_h,
+        timing_weeks    = timing_weeks,
+        records         = records,
+        sender_entity   = sender_entity,
+        carrier_records = carrier_records,
     )
 
 # ── BUILD JS VARIABLE BLOCKS ─────────────────────────────────────────────────
@@ -474,6 +491,26 @@ def build_js_vars(m):
 
     return D, dict(weeks=wow_weeks_labels, categories=wow_categories), ibTiming, ibData, output
 
+# ── CARRIER DATA BUILDER ─────────────────────────────────────────────────────
+def build_carrier_js(carrier_records):
+    """Build CARRIER_DATA JS object from carrier_records list."""
+    buckets = defaultdict(list)
+    for rec in carrier_records:
+        day_bucket = str(round(rec['dur']))
+        buckets[day_bucket].append(rec)
+
+    sorted_keys = sorted(buckets.keys(), key=lambda x: int(x))
+    labels  = sorted_keys
+    counts  = [len(buckets[b]) for b in sorted_keys]
+    records = {}
+    for b in sorted_keys:
+        # Sort: MRR desc (nulls last), then dur desc as tiebreak
+        recs = sorted(buckets[b],
+                      key=lambda r: (r['mrr'] is None, -(r['mrr'] or 0), -r['dur']))
+        records[b] = recs
+
+    return {'labels': labels, 'counts': counts, 'records': records}
+
 # ── PATCH HTML ───────────────────────────────────────────────────────────────
 def patch(html, var_name, new_value_js):
     """
@@ -508,6 +545,23 @@ def patch_rej_records(html, records):
         print('  WARNING: could not find REJ_RECORDS — skipped')
     return new_html
 
+def patch_carrier_data(html, carrier_data):
+    """CARRIER_DATA — patch the nested object using lambda replacement."""
+    js = json.dumps(carrier_data, ensure_ascii=False)
+    pattern = re.compile(r'(const CARRIER_DATA\s*=\s*)(\{[\s\S]*?\})(;)', re.MULTILINE)
+    new_html, n = pattern.subn(lambda m: m.group(1) + js + m.group(3), html, count=1)
+    if n == 0:
+        print('  WARNING: could not find CARRIER_DATA — skipped')
+    return new_html
+
+def patch_carrier_subtitle(html, total):
+    """Update the hardcoded sender count in the carrier chart subtitle."""
+    pattern = re.compile(r'(Click a bar to see the list\. )(\d+)( total senders\.)')
+    new_html, n = pattern.subn(lambda m: m.group(1) + str(total) + m.group(3), html, count=1)
+    if n == 0:
+        print('  WARNING: could not find carrier subtitle count — skipped')
+    return new_html
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import argparse
@@ -528,7 +582,7 @@ if __name__ == '__main__':
     entity_ids = set(m['sender_entity'].values())
     mrr_data   = fetch_mrr(entity_ids)
 
-    # Merge MRR into records
+    # Merge MRR into records (rejection modal)
     if mrr_data:
         for rec in m['records']:
             eid = rec.get('eid', '')
@@ -538,7 +592,19 @@ if __name__ == '__main__':
                 rec['em']  = d['email_mrr']
                 rec['sm']  = d['sms_mrr']
                 rec['mrr'] = d['combined_mrr']
-        print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} records.')
+        print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} rejection records.')
+
+    # Merge MRR into carrier records
+    if mrr_data:
+        for rec in m['carrier_records']:
+            eid = rec.get('eid', '')
+            if eid in mrr_data:
+                d = mrr_data[eid]
+                rec['co']  = d['company_name']
+                rec['em']  = d['email_mrr']
+                rec['sm']  = d['sms_mrr']
+                rec['mrr'] = d['combined_mrr']
+        print(f'  MRR merged into {sum(1 for r in m["carrier_records"] if r["mrr"] is not None)} carrier records.')
 
     print(f'Reading HTML: {HTML_PATH}')
     with open(HTML_PATH, encoding='utf-8') as f:
@@ -555,13 +621,20 @@ if __name__ == '__main__':
     html = patch_array(html, 'outputApproved',output['approved'])
     html = patch_rej_records(html, m['records'])
 
+    print('Building carrier data...')
+    carrier_data = build_carrier_js(m['carrier_records'])
+    html = patch_carrier_data(html, carrier_data)
+    html = patch_carrier_subtitle(html, len(m['carrier_records']))
+
     print(f'Writing HTML: {HTML_PATH}')
     with open(HTML_PATH, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f'\nDone. {len(m["records"])} rejected sender records embedded.')
+    print(f'\nDone.')
+    print(f'  {len(m["records"])} rejected sender records embedded.')
+    print(f'  {len(m["carrier_records"])} carrier review sender records embedded.')
     if mrr_data:
-        print(f'MRR data included for {len(mrr_data)} entities.')
+        print(f'  MRR data included for {len(mrr_data)} entities.')
     else:
-        print('MRR data not included (Snowflake unavailable — set SF_ACCOUNT and SF_USER to enable).')
+        print('  MRR not included (Snowflake unavailable — set SF_ACCOUNT and SF_USER to enable).')
     print('Open rcs_dashboard.html in your browser to view.')
