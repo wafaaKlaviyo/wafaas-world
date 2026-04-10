@@ -385,58 +385,27 @@ def compute(rows):
         })
     records.sort(key=lambda r: r['w'])
 
-    # 10. Carrier review senders (current status = '3 - IN CARRIER REVIEW')
-    carrier_senders = {sn for sn, sc in sender_status.items() if sc == '3 - IN CARRIER REVIEW'}
-    carrier_hours = defaultdict(float)
-    for r in rows:
-        sc = r.get('status clean', '').strip()
-        if sc != '3 - IN CARRIER REVIEW':
-            continue
-        sn = r['senderName']
-        if sn not in carrier_senders:
-            continue
-        try:
-            h = float(r[HOURS_COL])
-        except (ValueError, KeyError):
-            continue
-        if h > carrier_hours[sn]:
-            carrier_hours[sn] = h
-
-    carrier_records = []
-    for sn in sorted(carrier_senders):
-        h = carrier_hours.get(sn, 0.0)
-        carrier_records.append({
-            's':   sn,
-            'eid': sender_entity.get(sn, ''),
-            'dur': round(h / 24, 1),
-            'co':  '',
-            'em':  None,
-            'sm':  None,
-            'mrr': None,
-        })
-
     return dict(
-        ALL_WEEKS       = ALL_WEEKS,
-        total_sub       = total_sub,
-        first_time      = first_time,
-        status_counts   = status_counts,
-        sorted_cats     = sorted_cats,
-        cat_totals      = cat_totals,
-        wow             = wow,
-        wow_weeks       = wow_weeks,
-        ib_received     = ib_received,
-        ib_to_carrier   = ib_to_carrier,
-        ib_rejected     = ib_rejected,
-        ib_approved     = ib_approved,
-        completed_same  = completed_same,
-        completed_prior = completed_prior,
-        wait_h          = wait_h,
-        rej_h           = rej_h,
-        app_h           = app_h,
-        timing_weeks    = timing_weeks,
-        records         = records,
-        sender_entity   = sender_entity,
-        carrier_records = carrier_records,
+        ALL_WEEKS      = ALL_WEEKS,
+        total_sub      = total_sub,
+        first_time     = first_time,
+        status_counts  = status_counts,
+        sorted_cats    = sorted_cats,
+        cat_totals     = cat_totals,
+        wow            = wow,
+        wow_weeks      = wow_weeks,
+        ib_received    = ib_received,
+        ib_to_carrier  = ib_to_carrier,
+        ib_rejected    = ib_rejected,
+        ib_approved    = ib_approved,
+        completed_same = completed_same,
+        completed_prior= completed_prior,
+        wait_h         = wait_h,
+        rej_h          = rej_h,
+        app_h          = app_h,
+        timing_weeks   = timing_weeks,
+        records        = records,
+        sender_entity  = sender_entity,
     )
 
 # ── BUILD JS VARIABLE BLOCKS ─────────────────────────────────────────────────
@@ -505,26 +474,6 @@ def build_js_vars(m):
 
     return D, dict(weeks=wow_weeks_labels, categories=wow_categories), ibTiming, ibData, output
 
-# ── CARRIER DATA BUILDER ─────────────────────────────────────────────────────
-def build_carrier_js(carrier_records):
-    """Build CARRIER_DATA JS object from carrier_records list."""
-    buckets = defaultdict(list)
-    for rec in carrier_records:
-        day_bucket = str(round(rec['dur']))
-        buckets[day_bucket].append(rec)
-
-    sorted_keys = sorted(buckets.keys(), key=lambda x: int(x))
-    labels  = sorted_keys
-    counts  = [len(buckets[b]) for b in sorted_keys]
-    records = {}
-    for b in sorted_keys:
-        # Sort: MRR desc (nulls last), then dur desc as tiebreak
-        recs = sorted(buckets[b],
-                      key=lambda r: (r['mrr'] is None, -(r['mrr'] or 0), -r['dur']))
-        records[b] = recs
-
-    return {'labels': labels, 'counts': counts, 'records': records}
-
 # ── PATCH HTML ───────────────────────────────────────────────────────────────
 def patch(html, var_name, new_value_js):
     """
@@ -559,23 +508,6 @@ def patch_rej_records(html, records):
         print('  WARNING: could not find REJ_RECORDS — skipped')
     return new_html
 
-def patch_carrier_data(html, carrier_data):
-    """CARRIER_DATA — patch the nested object using lambda replacement."""
-    js = json.dumps(carrier_data, ensure_ascii=False)
-    pattern = re.compile(r'(const CARRIER_DATA\s*=\s*)(\{[\s\S]*?\})(;)', re.MULTILINE)
-    new_html, n = pattern.subn(lambda m: m.group(1) + js + m.group(3), html, count=1)
-    if n == 0:
-        print('  WARNING: could not find CARRIER_DATA — skipped')
-    return new_html
-
-def patch_carrier_subtitle(html, total):
-    """Update the hardcoded sender count in the carrier chart subtitle."""
-    pattern = re.compile(r'(Click a bar to see the list\. )(\d+)( total senders\.)')
-    new_html, n = pattern.subn(lambda m: m.group(1) + str(total) + m.group(3), html, count=1)
-    if n == 0:
-        print('  WARNING: could not find carrier subtitle count — skipped')
-    return new_html
-
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import argparse
@@ -596,7 +528,7 @@ if __name__ == '__main__':
     entity_ids = set(m['sender_entity'].values())
     mrr_data   = fetch_mrr(entity_ids)
 
-    # Merge MRR into records (rejection modal)
+    # Merge MRR into records
     if mrr_data:
         for rec in m['records']:
             eid = rec.get('eid', '')
@@ -606,19 +538,7 @@ if __name__ == '__main__':
                 rec['em']  = d['email_mrr']
                 rec['sm']  = d['sms_mrr']
                 rec['mrr'] = d['combined_mrr']
-        print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} rejection records.')
-
-    # Merge MRR into carrier records
-    if mrr_data:
-        for rec in m['carrier_records']:
-            eid = rec.get('eid', '')
-            if eid in mrr_data:
-                d = mrr_data[eid]
-                rec['co']  = d['company_name']
-                rec['em']  = d['email_mrr']
-                rec['sm']  = d['sms_mrr']
-                rec['mrr'] = d['combined_mrr']
-        print(f'  MRR merged into {sum(1 for r in m["carrier_records"] if r["mrr"] is not None)} carrier records.')
+        print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} records.')
 
     print(f'Reading HTML: {HTML_PATH}')
     with open(HTML_PATH, encoding='utf-8') as f:
@@ -635,20 +555,13 @@ if __name__ == '__main__':
     html = patch_array(html, 'outputApproved',output['approved'])
     html = patch_rej_records(html, m['records'])
 
-    print('Building carrier data...')
-    carrier_data = build_carrier_js(m['carrier_records'])
-    html = patch_carrier_data(html, carrier_data)
-    html = patch_carrier_subtitle(html, len(m['carrier_records']))
-
     print(f'Writing HTML: {HTML_PATH}')
     with open(HTML_PATH, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f'\nDone.')
-    print(f'  {len(m["records"])} rejected sender records embedded.')
-    print(f'  {len(m["carrier_records"])} carrier review sender records embedded.')
+    print(f'\nDone. {len(m["records"])} rejected sender records embedded.')
     if mrr_data:
-        print(f'  MRR data included for {len(mrr_data)} entities.')
+        print(f'MRR data included for {len(mrr_data)} entities.')
     else:
-        print('  MRR not included (Snowflake unavailable — set SF_ACCOUNT and SF_USER to enable).')
+        print('MRR data not included (Snowflake unavailable — set SF_ACCOUNT and SF_USER to enable).')
     print('Open rcs_dashboard.html in your browser to view.')
