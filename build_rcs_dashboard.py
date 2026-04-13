@@ -87,12 +87,12 @@ def fetch_mrr(entity_ids):
             email_mrr AS (
                 SELECT KLAVIYO_ACCOUNT_ID, ENDING_MRR AS email_mrr
                 FROM KLAVIYO.STAGING.INT_METRICS_TREE_ACCOUNTS, latest_ds
-                WHERE PRODUCT = 'Email' AND DS_TREE = max_ds
+                WHERE LOWER(PRODUCT) = 'email' AND DS_TREE = max_ds
             ),
             sms_mrr AS (
                 SELECT KLAVIYO_ACCOUNT_ID, ENDING_MRR AS sms_mrr
                 FROM KLAVIYO.STAGING.INT_METRICS_TREE_ACCOUNTS, latest_ds
-                WHERE PRODUCT = 'SMS' AND DS_TREE = max_ds
+                WHERE LOWER(PRODUCT) = 'sms' AND DS_TREE = max_ds
             ),
             sfdc AS (
                 SELECT PRODUCT_KLAVIYO_ACCOUNT_ID_C AS entity_id, NAME AS company_name
