@@ -241,6 +241,20 @@
       </div>
     </div>
   </div>
+
+  <!-- IB Review Duration Chart -->
+  <div class="chart-grid row-full mb20">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2 style="margin:0">Senders Currently In IB Review — Duration Distribution</h2>
+        <button class="copy-btn" onclick="copyAllIbRecords()">Copy All Records</button>
+      </div>
+      <div class="subtitle" id="ibSubtitle">Each bar = number of senders who have been in IB review for that many days. Click a bar to see the list. 13 total senders.</div>
+      <div class="chart-wrap" style="height:300px">
+        <canvas id="ibDurChart"></canvas>
+      </div>
+    </div>
+  </div>
 </div><!-- /container -->
 
 
@@ -275,6 +289,42 @@
       <div style="display:flex;gap:8px;">
         <button class="copy-btn" onclick="copyCarrierRecords()">Copy All Records</button>
         <button class="copy-btn" onclick="copyCarrierSenders()">Copy Sender Names</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IB Review Modal -->
+<div class="modal-overlay" id="ibModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h3 id="ibModalTitle">In IB Review</h3>
+        <p id="ibModalSubtitle"></p>
+      </div>
+      <button class="modal-close" onclick="closeIbModal()">×</button>
+    </div>
+    <div class="modal-search">
+      <input type="text" id="ibModalSearch" placeholder="Search sender or company..." oninput="renderIbTable()">
+    </div>
+    <div class="modal-body">
+      <table class="modal-table">
+        <thead>
+          <tr>
+            <th onclick="ibSortBy('s')">Sender ↕</th>
+            <th onclick="ibSortBy('co')">Company ↕</th>
+            <th onclick="ibSortBy('dur')">Days in IB Review ↕</th>
+            <th onclick="ibSortBy('mrr')" title="Hover for Email/SMS breakdown">Combined MRR ↕</th>
+          </tr>
+        </thead>
+        <tbody id="ibModalTableBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <span id="ibModalCount"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="copy-btn" onclick="copyIbRecords()">Copy All Records</button>
+        <button class="copy-btn" onclick="copyIbSenders()">Copy Sender Names</button>
       </div>
     </div>
   </div>
@@ -1010,11 +1060,135 @@ document.getElementById('carrierModalOverlay').addEventListener('click', e => {
   if (e.target === document.getElementById('carrierModalOverlay')) closeCarrierModal();
 });
 
+// ── IB REVIEW DURATION CHART ──────────────────────────────────────────────────
+const IB_DATA = {"labels": ["9", "16", "21", "34", "36", "38", "39", "42", "44", "50", "53"], "counts": [1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1], "records": {"9": [{"s": "emmahardie_70a6_gb", "eid": "Wz5r8b", "dur": 9, "co": "emmahardie.com", "em": 8640.0, "sm": 1620.0, "mrr": 10260.0}], "16": [{"s": "cozyripples_6177_us", "eid": "VgQB8H", "dur": 16, "co": "cozyripples.com", "em": 240.0, "sm": 300.0, "mrr": 540.0}], "21": [{"s": "smsinternational_9f60_it", "eid": "Ra4b3p", "dur": 21, "co": "", "em": null, "sm": null, "mrr": 0.0}, {"s": "testklaviyoodmr_f885_se", "eid": "SgDbRE", "dur": 21, "co": "", "em": null, "sm": null, "mrr": 0.0}], "34": [{"s": "arsenicfrontier_8a3d_us", "eid": "X4HgW5", "dur": 34, "co": "", "em": null, "sm": null, "mrr": 0.0}], "36": [{"s": "asfrontiertest_5ba8_gb", "eid": "X4HgW5", "dur": 36, "co": "", "em": null, "sm": null, "mrr": 0.0}], "38": [{"s": "bughunting_e0c9_de", "eid": "V3tgkd", "dur": 38, "co": "bugcrowdninja.com", "em": null, "sm": null, "mrr": 0.0}], "39": [{"s": "emmahardie_70a6_gb", "eid": "Wz5r8b", "dur": 39, "co": "emmahardie.com", "em": 8640.0, "sm": 1620.0, "mrr": 10260.0}], "42": [{"s": "wickhamswinemerc_876d_gb", "eid": "XtMCqM", "dur": 42, "co": "wickhamwine.co.uk", "em": 1800.0, "sm": 180.0, "mrr": 1980.0}, {"s": "cozyripples_6177_us", "eid": "VgQB8H", "dur": 42, "co": "cozyripples.com", "em": 240.0, "sm": 300.0, "mrr": 540.0}], "44": [{"s": "asfrontiertest_5ba8_gb", "eid": "X4HgW5", "dur": 44, "co": "", "em": null, "sm": null, "mrr": 0.0}], "50": [{"s": "klaviyotestodmrf_6a6f_fr", "eid": "SgDbRE", "dur": 50, "co": "", "em": null, "sm": null, "mrr": 0.0}], "53": [{"s": "klaviyoodmr_d7fd_us", "eid": "SgDbRE", "dur": 53, "co": "", "em": null, "sm": null, "mrr": 0.0}]}};
+
+const ibChart = new Chart(document.getElementById('ibDurChart'), {
+  type: 'bar',
+  data: {
+    labels: IB_DATA.labels.map(l => l + 'd'),
+    datasets: [{
+      label: 'Senders',
+      data: IB_DATA.counts,
+      backgroundColor: '#0ea5e9cc',
+      borderColor: '#0ea5e9',
+      borderWidth: 1.5,
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => `${items[0].label} in IB review`,
+          label: (ctx) => ` ${ctx.parsed.y} sender${ctx.parsed.y !== 1 ? 's' : ''} — click to view`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { display: false }, title: { display: true, text: 'Days in IB review' } },
+      y: { beginAtZero: true, grid: { color: '#f1f5f9' }, title: { display: true, text: '# Senders' } }
+    },
+    onClick: (evt, els) => {
+      if (!els.length) return;
+      const bucket = IB_DATA.labels[els[0].index];
+      openIbModal(bucket);
+    }
+  }
+});
+document.getElementById('ibDurChart').style.cursor = 'pointer';
+
+// ── IB MODAL LOGIC ────────────────────────────────────────────────────────────
+let ibFiltered = [];
+let ibSortKey = 'mrr';
+let ibSortAsc = false;
+
+function openIbModal(bucket) {
+  ibFiltered = (IB_DATA.records[bucket] || []).slice();
+  document.getElementById('ibModalSearch').value = '';
+  document.getElementById('ibModalTitle').textContent = bucket + ' days in IB review';
+  document.getElementById('ibModalSubtitle').textContent = ibFiltered.length + ' sender' + (ibFiltered.length !== 1 ? 's' : '');
+  ibSortKey = 'mrr'; ibSortAsc = false;
+  renderIbTable();
+  document.getElementById('ibModalOverlay').classList.add('open');
+}
+
+function closeIbModal() {
+  document.getElementById('ibModalOverlay').classList.remove('open');
+}
+
+function ibSortBy(key) {
+  if (ibSortKey === key) ibSortAsc = !ibSortAsc;
+  else { ibSortKey = key; ibSortAsc = key !== 'mrr'; }
+  renderIbTable();
+}
+
+function renderIbTable() {
+  const q = document.getElementById('ibModalSearch').value.toLowerCase();
+  let rows = ibFiltered.filter(r => !q || r.s.toLowerCase().includes(q) || (r.co||'').toLowerCase().includes(q));
+  rows.sort((a, b) => {
+    const av = a[ibSortKey], bv = b[ibSortKey];
+    if (ibSortKey === 'mrr' || ibSortKey === 'dur') {
+      const an = av ?? -Infinity, bn = bv ?? -Infinity;
+      return ibSortAsc ? an - bn : bn - an;
+    }
+    return ibSortAsc ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
+  });
+  document.getElementById('ibModalCount').textContent = rows.length + ' sender' + (rows.length !== 1 ? 's' : '') + ' shown';
+  const tbody = document.getElementById('ibModalTableBody');
+  tbody.innerHTML = rows.map(r => {
+    const mrrFmt  = r.mrr != null ? '$' + r.mrr.toLocaleString() : '—';
+    const mrrTitle = r.mrr != null ? `Email: $${(r.em||0).toLocaleString()} | SMS: $${(r.sm||0).toLocaleString()}` : 'MRR unavailable';
+    return `<tr>
+      <td class="sender">${r.s}</td>
+      <td>${r.co || '<span style="color:#94a3b8">—</span>'}</td>
+      <td style="font-weight:600">${r.dur}d</td>
+      <td title="${mrrTitle}" style="cursor:default;font-weight:600;color:${r.mrr > 0 ? '#0ea5e9' : '#94a3b8'}">${mrrFmt}</td>
+    </tr>`;
+  }).join('');
+}
+
+function copyIbRecords() {
+  const q = document.getElementById('ibModalSearch').value.toLowerCase();
+  const visible = ibFiltered.filter(r => !q || r.s.toLowerCase().includes(q) || (r.co||'').toLowerCase().includes(q));
+  const header = ['Sender', 'Company', 'Days in IB Review', 'Combined MRR', 'Email MRR', 'SMS MRR'];
+  const tsv = [header, ...visible.map(r => [r.s, r.co||'', r.dur, r.mrr??'', r.em??'', r.sm??''])].map(row => row.join('\t')).join('\n');
+  navigator.clipboard.writeText(tsv);
+  const btn = event.target; btn.textContent = `Copied ${visible.length} rows!`;
+  setTimeout(() => btn.textContent = 'Copy All Records', 1800);
+}
+
+function copyIbSenders() {
+  const q = document.getElementById('ibModalSearch').value.toLowerCase();
+  const names = ibFiltered.filter(r => !q || r.s.toLowerCase().includes(q) || (r.co||'').toLowerCase().includes(q)).map(r => r.s);
+  navigator.clipboard.writeText(names.join('\n'));
+  const btn = event.target; btn.textContent = `Copied ${names.length}!`;
+  setTimeout(() => btn.textContent = 'Copy Sender Names', 1800);
+}
+
+function copyAllIbRecords() {
+  const allRecs = Object.values(IB_DATA.records).flat();
+  allRecs.sort((a, b) => (b.mrr ?? -1) - (a.mrr ?? -1));
+  const header = ['Sender', 'Company', 'Days in IB Review', 'Combined MRR', 'Email MRR', 'SMS MRR'];
+  const tsv = [header, ...allRecs.map(r => [r.s, r.co||'', r.dur, r.mrr??'', r.em??'', r.sm??''])].map(row => row.join('\t')).join('\n');
+  navigator.clipboard.writeText(tsv);
+  const btn = event.target;
+  btn.textContent = `Copied ${allRecs.length} rows!`;
+  setTimeout(() => btn.textContent = 'Copy All Records', 1800);
+}
+
+document.getElementById('ibModalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('ibModalOverlay')) closeIbModal();
+});
+
 document.getElementById('modalOverlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 });
 // Close on Escape
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeCarrierModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeCarrierModal(); closeIbModal(); } });
 </script>
 </body>
 </html>
