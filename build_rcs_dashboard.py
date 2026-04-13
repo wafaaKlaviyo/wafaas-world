@@ -375,7 +375,33 @@ def compute(rows):
         })
     records.sort(key=lambda r: r['w'])
 
-    # 10. Carrier review senders:
+    # 10. IB review senders:
+    # All rows where status clean = '2 - IN INFOBIP REVIEW' AND sender's current
+    # status is also '2 - IN INFOBIP REVIEW'. Each row is a data point distributed
+    # by duration in state (rounded to 0 decimal places in days).
+    ib_senders = {sn for sn, sc in sender_status.items() if sc == '2 - IN INFOBIP REVIEW'}
+    ib_records = []
+    for r in rows:
+        if r.get('status clean', '').strip() != '2 - IN INFOBIP REVIEW':
+            continue
+        sn = r['senderName']
+        if sn not in ib_senders:
+            continue
+        try:
+            d = float(r['duration in state (days)'])
+        except (ValueError, KeyError):
+            continue
+        ib_records.append({
+            's':   sn,
+            'eid': sender_entity.get(sn, ''),
+            'dur': round(d),
+            'co':  '',
+            'em':  None,
+            'sm':  None,
+            'mrr': None,
+        })
+
+    # 11. Carrier review senders:
     # All rows where status clean = '3 - IN CARRIER REVIEW' AND sender's current
     # status is also '3 - IN CARRIER REVIEW'. Each row is a data point distributed
     # by duration in state (rounded to 0 decimal places in days).
@@ -403,6 +429,7 @@ def compute(rows):
 
     return dict(
         ALL_WEEKS       = ALL_WEEKS,
+        ib_records      = ib_records,
         total_sub       = total_sub,
         first_time      = first_time,
         status_counts   = status_counts,
@@ -562,6 +589,24 @@ def patch_carrier_subtitle(html, total):
         print('  WARNING: could not find carrier subtitle count — skipped')
     return new_html
 
+def patch_ib_data(html, ib_data):
+    """IB_DATA — patch the nested object using lambda replacement."""
+    js = json.dumps(ib_data, ensure_ascii=False)
+    pattern = re.compile(r'(const IB_DATA\s*=\s*)(\{[\s\S]*?\})(;)', re.MULTILINE)
+    new_html, n = pattern.subn(lambda m: m.group(1) + js + m.group(3), html, count=1)
+    if n == 0:
+        print('  WARNING: could not find IB_DATA — skipped')
+    return new_html
+
+def patch_ib_subtitle(html, total):
+    """Update the IB chart subtitle with the total sender count."""
+    pattern = re.compile(r'(id="ibSubtitle">Each bar = number of senders who have been in IB review for that many days\. Click a bar to see the list\.)(.*?)(</div>)')
+    new_text = f' {total} total senders.'
+    new_html, n = pattern.subn(lambda m: m.group(1) + new_text + m.group(3), html, count=1)
+    if n == 0:
+        print('  WARNING: could not find IB subtitle — skipped')
+    return new_html
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import argparse
@@ -594,6 +639,18 @@ if __name__ == '__main__':
                 rec['mrr'] = d['combined_mrr']
         print(f'  MRR merged into {sum(1 for r in m["records"] if r["mrr"] is not None)} rejection records.')
 
+    # Merge MRR into IB review records
+    if mrr_data:
+        for rec in m['ib_records']:
+            eid = rec.get('eid', '')
+            if eid in mrr_data:
+                d = mrr_data[eid]
+                rec['co']  = d['company_name']
+                rec['em']  = d['email_mrr']
+                rec['sm']  = d['sms_mrr']
+                rec['mrr'] = d['combined_mrr']
+        print(f'  MRR merged into {sum(1 for r in m["ib_records"] if r["mrr"] is not None)} IB review records.')
+
     # Merge MRR into carrier records
     if mrr_data:
         for rec in m['carrier_records']:
@@ -621,6 +678,11 @@ if __name__ == '__main__':
     html = patch_array(html, 'outputApproved',output['approved'])
     html = patch_rej_records(html, m['records'])
 
+    print('Building IB review data...')
+    ib_data = build_carrier_js(m['ib_records'])
+    html = patch_ib_data(html, ib_data)
+    html = patch_ib_subtitle(html, len(m['ib_records']))
+
     print('Building carrier data...')
     carrier_data = build_carrier_js(m['carrier_records'])
     html = patch_carrier_data(html, carrier_data)
@@ -632,6 +694,7 @@ if __name__ == '__main__':
 
     print(f'\nDone.')
     print(f'  {len(m["records"])} rejected sender records embedded.')
+    print(f'  {len(m["ib_records"])} IB review sender records embedded.')
     print(f'  {len(m["carrier_records"])} carrier review sender records embedded.')
     if mrr_data:
         print(f'  MRR data included for {len(mrr_data)} entities.')
