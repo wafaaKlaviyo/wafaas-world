@@ -869,6 +869,28 @@ new Chart(document.getElementById('ibThroughputChart'), {
 // ── 6. IB TIMING BY WEEK (LINE) ──────────────────────────────────────────────
 const ibTiming = {"weeks": ["Wk -3 (Feb 03)", "Wk -2 (Feb 10)", "Wk -1 (Feb 17)", "Wk 0 (Feb 24)", "Wk +1 (Mar 03)", "Wk +2 (Mar 10)", "Wk +3 (Mar 17)", "Wk +4 (Mar 24)", "Wk +5 (Mar 31)", "Wk +6 (Apr 07)"], "wait_mean": [20.5, 75.7, 29.6, 37.8, 130.8, 250.0, 305.4, 370.5, 53.8, 66.2], "rej_mean": [null, 81.7, 0.0, 8.4, 10.9, 13.1, 88.1, 66.4, 9.1, 3.6], "app_mean": [5.7, 10.4, 10.8, 6.3, 5.5, 0.1, 0.1, 1.0, 0.2, 3.4]};
 
+// ── Pipeline stat cards — populate from ibTiming.wait_stats / rej_stats / app_stats ──
+(function() {
+  if (!ibTiming.wait_stats) return; // pre-fix build, leave hardcoded values
+  function h(v) { return v == null ? 'N/A' : v + ' h'; }
+  function fillCard(cls, stats, nText) {
+    const card = document.querySelector('.stat-card.' + cls);
+    if (!card) return;
+    const vals = card.querySelectorAll('.stat-val');
+    if (vals[0]) vals[0].textContent = h(stats.p50);
+    if (vals[1]) vals[1].textContent = h(stats.p75);
+    if (vals[2]) vals[2].textContent = h(stats.p90);
+    if (vals[3]) vals[3].textContent = h(stats.mean);
+    const nEl = card.querySelector('.stat-n');
+    if (nEl) nEl.textContent = nText;
+  }
+  const ws = ibTiming.wait_stats, rs = ibTiming.rej_stats, as_ = ibTiming.app_stats;
+  fillCard('wait', ws, `n = ${ws.n.toLocaleString()} transitions`);
+  const pctNote = rs.pct_lt1h != null ? `; ${rs.pct_lt1h}% resolved in <1h` : '';
+  fillCard('rej',  rs, `n = ${rs.n.toLocaleString()} rejections${pctNote}; mean skewed by long tail`);
+  fillCard('app',  as_, `n = ${as_.n.toLocaleString()} approvals to carrier`);
+})();
+
 new Chart(document.getElementById('ibTimingWowChart'), {
   type: 'line',
   data: {

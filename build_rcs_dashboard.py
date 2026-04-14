@@ -507,11 +507,24 @@ def build_js_vars(m):
         wow_categories[c] = [m['wow'][w].get(c, 0) for w in m['wow_weeks']]
 
     tw = m['timing_weeks']
+
+    # All-time flat lists for stat card p50/p75/p90/mean/n
+    all_wait = [h for lst in m['wait_h'].values() for h in lst]
+    all_rej  = [h for lst in m['rej_h'].values()  for h in lst]
+    all_app  = [h for lst in m['app_h'].values()  for h in lst]
+    rej_lt1h_pct = round(sum(1 for h in all_rej if h < 1) / len(all_rej) * 100) if all_rej else None
+
+    def stat_block(lst):
+        return {'p50': median(lst), 'p75': pct(lst, 0.75), 'p90': pct(lst, 0.90), 'mean': mean(lst), 'n': len(lst)}
+
     ibTiming = dict(
-        weeks     = [week_label(w) for w in tw],
-        wait_mean = [mean(m['wait_h'][w]) for w in tw],
-        rej_mean  = [mean(m['rej_h'][w])  for w in tw],
-        app_mean  = [mean(m['app_h'][w])  for w in tw],
+        weeks      = [week_label(w) for w in tw],
+        wait_mean  = [mean(m['wait_h'][w]) for w in tw],
+        rej_mean   = [mean(m['rej_h'][w])  for w in tw],
+        app_mean   = [mean(m['app_h'][w])  for w in tw],
+        wait_stats = stat_block(all_wait),
+        rej_stats  = dict(**stat_block(all_rej), pct_lt1h=rej_lt1h_pct),
+        app_stats  = stat_block(all_app),
     )
 
     ibData = dict(
