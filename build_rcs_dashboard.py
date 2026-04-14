@@ -354,26 +354,37 @@ def compute(rows):
         if eid and sn not in sender_entity:
             sender_entity[sn] = eid
 
-    # 9. Records for modal (MRR added later in main after Snowflake fetch)
+    # 9. Records for rejection table — one row per rejection event (status_clean = 4 - REJECTED).
+    # Reason, categories, and entity ID are taken from that specific row; current status
+    # reflects the sender's most-recent state. MRR populated after Snowflake fetch.
     records = []
-    for sn, reasons in sender_rej_reasons.items():
-        all_cats = sender_rej_cats.get(sn, set())
-        wk  = sender_sub_week.get(sn)
+    for row in rows:
+        if row.get('status clean', '').strip() != '4 - REJECTED':
+            continue
+        sn  = row['senderName']
+        eid = row.get('entityId', '').strip() or sender_entity.get(sn, '')
+        wk  = row['_week']
         st  = STATUS_LABELS.get(sender_status.get(sn, ''), sender_status.get(sn, ''))
+        rr  = row.get('rejection_reason', '').strip()
+        rc  = row.get('rejection_category', '').strip()
+        if rc and rc.lower() not in ('n/a', 'na'):
+            cats = sorted([c.strip() for c in rc.split('|') if c.strip()])
+        else:
+            cats = ['Other']
         records.append({
             's':   sn,
-            'eid': sender_entity.get(sn, ''),
+            'eid': eid,
             'w':   week_label(wk) if wk is not None else 'Unknown',
             'st':  st,
-            'c':   sorted(all_cats),
-            'r':   ' | '.join(r for r in reasons[:3] if r),
+            'c':   cats,
+            'r':   rr,
             # MRR fields — populated after Snowflake fetch
             'co':  '',    # company name
             'em':  None,  # email MRR
             'sm':  None,  # SMS MRR
             'mrr': None,  # combined MRR
         })
-    records.sort(key=lambda r: r['w'])
+    records.sort(key=lambda r: (r['w'], r['s']))
 
     # 10. Pending IB review senders:
     # All rows where status clean = '1 - PENDING IB REVIEW' AND sender's current
