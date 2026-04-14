@@ -406,6 +406,7 @@ def compute(rows):
             's':   sn,
             'eid': sender_entity.get(sn, ''),
             'dur': round(d),
+            'w':   week_label(sender_sub_week.get(sn)) if sender_sub_week.get(sn) is not None else 'Unknown',
             'co':  '',
             'em':  None,
             'sm':  None,
