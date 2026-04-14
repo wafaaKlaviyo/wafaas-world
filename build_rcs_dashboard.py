@@ -619,6 +619,25 @@ def patch_ib_subtitle(html, total):
         print('  WARNING: could not find IB subtitle — skipped')
     return new_html
 
+def patch_header_dt(html, rows):
+    """Replace 'early April' (or similar placeholder) in the header <p> with the latest CreatedAt datetime."""
+    max_dt = None
+    for row in rows:
+        dt = row.get('_dt')
+        if dt and (max_dt is None or dt > max_dt):
+            max_dt = dt
+    if max_dt is None:
+        print('  WARNING: could not determine max CreatedAt — header datetime not updated')
+        return html
+    dt_str = max_dt.strftime('%b %d, %Y %H:%M')
+    pattern = re.compile(r'(Data through\s+)[^·<]+', re.IGNORECASE)
+    new_html, n = pattern.subn(lambda m: m.group(1) + dt_str + ' ', html, count=1)
+    if n == 0:
+        print('  WARNING: could not find "Data through" in header — skipped')
+    else:
+        print(f'  Header datetime set to: {dt_str}')
+    return new_html
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import argparse
@@ -699,6 +718,8 @@ if __name__ == '__main__':
     carrier_data = build_carrier_js(m['carrier_records'])
     html = patch_carrier_data(html, carrier_data)
     html = patch_carrier_subtitle(html, len(m['carrier_records']))
+
+    html = patch_header_dt(html, rows)
 
     print(f'Writing HTML: {HTML_PATH}')
     with open(HTML_PATH, 'w', encoding='utf-8') as f:

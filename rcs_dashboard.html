@@ -133,6 +133,15 @@
   .badge.status-pending { background: #fef3c7; color: #d97706; }
   .badge.status-ib { background: #ffedd5; color: #c2410c; }
   .rej-footer { margin-top: 10px; font-size: 0.72rem; color: #94a3b8; }
+  .rej-tbl-wrap { overflow-x: auto; }
+
+  /* Tabs */
+  .tab-nav { display: flex; gap: 2px; margin-bottom: 24px; background: #f1f5f9; border-radius: 10px; padding: 4px; width: fit-content; }
+  .tab-btn { background: transparent; border: none; padding: 9px 22px; font-size: 0.83rem; font-weight: 600; color: #64748b; cursor: pointer; border-radius: 7px; font-family: inherit; transition: color 0.15s; white-space: nowrap; }
+  .tab-btn:hover { color: #1e293b; }
+  .tab-btn.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .tab-panel { display: none; }
+  .tab-panel.tab-active { display: block; }
 </style>
 </head>
 <body>
@@ -143,239 +152,267 @@
 
 <div class="container">
 
-  <!-- KPI Cards -->
-  <div class="kpi-grid">
-    <div class="kpi-card brands"><div class="kpi-val">1011</div><div class="kpi-label">Unique Brands</div></div>
-    <div class="kpi-card submissions"><div class="kpi-val">1299</div><div class="kpi-label">Total Submissions</div></div>
-    <div class="kpi-card pending"><div class="kpi-val">277</div><div class="kpi-label">Pending IB Review</div><div class="kpi-sub" id="mrr-pending"></div></div>
-    <div class="kpi-card ib-review"><div class="kpi-val">11</div><div class="kpi-label">In IB Review</div></div>
-    <div class="kpi-card carrier"><div class="kpi-val">169</div><div class="kpi-label">In Carrier Review</div><div class="kpi-sub" id="mrr-carrier"></div></div>
-    <div class="kpi-card approved"><div class="kpi-val">78</div><div class="kpi-label">Approved</div><div class="kpi-sub" id="mrr-approved"></div></div>
-    <div class="kpi-card rejected"><div class="kpi-val">441</div><div class="kpi-label">Rejected</div><div class="kpi-sub" id="mrr-rejected"></div></div>
+  <!-- Tab Navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="showTab('summary')">Summary</button>
+    <button class="tab-btn" onclick="showTab('ib-pipeline')">Infobip Pipeline</button>
+    <button class="tab-btn" onclick="showTab('rej-tracking')">Rejection Tracking</button>
+    <button class="tab-btn" onclick="showTab('pending')">Pending Customers</button>
   </div>
 
-  <!-- Row 1: Weekly submissions -->
-  <div class="chart-grid row-full mb20">
-    <div class="card">
-      <h2>Weekly Submissions</h2>
-      <div class="subtitle">Total unique submissions (new ResourceOrderUuids) vs. senders submitted for the first time each week</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="weeklyChart"></canvas>
-      </div>
-    </div>
-  </div>
+  <!-- ===================== SUMMARY TAB ===================== -->
+  <div class="tab-panel tab-active" id="tab-summary">
 
-  <!-- Weekly output -->
-  <div class="chart-grid row-full mb20">
-    <div class="card">
-      <h2>Weekly Output</h2>
-      <div class="subtitle">IB decisions by event week — when rejections and carrier approvals actually occurred</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="weeklyOutputChart"></canvas>
-      </div>
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card brands"><div class="kpi-val">1011</div><div class="kpi-label">Unique Brands</div></div>
+      <div class="kpi-card submissions"><div class="kpi-val">1299</div><div class="kpi-label">Total Submissions</div></div>
+      <div class="kpi-card pending"><div class="kpi-val">277</div><div class="kpi-label">Pending IB Review</div><div class="kpi-sub" id="mrr-pending"></div></div>
+      <div class="kpi-card ib-review"><div class="kpi-val">11</div><div class="kpi-label">In IB Review</div></div>
+      <div class="kpi-card carrier"><div class="kpi-val">169</div><div class="kpi-label">In Carrier Review</div><div class="kpi-sub" id="mrr-carrier"></div></div>
+      <div class="kpi-card approved"><div class="kpi-val">78</div><div class="kpi-label">Approved</div><div class="kpi-sub" id="mrr-approved"></div></div>
+      <div class="kpi-card rejected"><div class="kpi-val">441</div><div class="kpi-label">Rejected</div><div class="kpi-sub" id="mrr-rejected"></div></div>
     </div>
-  </div>
 
-  <!-- Row 2: Status donut + Approved vs Rejected donut -->
-  <div class="chart-grid row-2 mb20">
-    <div class="card">
-      <h2>Current Status Breakdown <span style="font-size:0.75rem;font-weight:500;color:#94a3b8;">(where things stand today)</span></h2>
-      <div class="subtitle">Each brand counted once at their most recent status — not a tally of all transitions. 1,001 total brands.</div>
-      <div class="chart-wrap" style="height:280px">
-        <canvas id="statusChart"></canvas>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Resolved: Approved vs. Rejected</h2>
-      <div class="subtitle">Brands with a final outcome — 519 resolved (78 approved, 441 rejected)</div>
-      <div class="chart-wrap" style="height:280px">
-        <canvas id="resolvedChart"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <!-- Row 3: Infobip pipeline timing stats + weekly means line chart -->
-  <div class="chart-grid mb20" style="grid-template-columns: 0.3fr 0.7fr;">
-    <div class="card">
-      <h2>Infobip Pipeline Timing</h2>
-      <div class="subtitle">Duration statistics by stage (all-time)</div>
-      <div class="stat-cards">
-        <div class="stat-card wait">
-          <h3>Wait before IB picks up (State 2)</h3>
-          <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">163.8 h</span></div>
-          <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">413.7 h</span></div>
-          <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">484.9 h</span></div>
-          <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">231.2 h</span></div>
-          <div class="stat-n">n = 662 transitions</div>
-        </div>
-        <div class="stat-card rej">
-          <h3>IB review time → Rejected (State 4-REJ)</h3>
-          <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">0.0 h</span></div>
-          <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">0.5 h</span></div>
-          <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">29.9 h</span></div>
-          <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">28.2 h</span></div>
-          <div class="stat-n">n = 867 rejections · 79% resolved in &lt;1h; mean skewed by long tail</div>
-        </div>
-        <div class="stat-card app">
-          <h3>IB review time → Carrier (State 3)</h3>
-          <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">0.1 h</span></div>
-          <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">0.3 h</span></div>
-          <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">1.8 h</span></div>
-          <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">2.3 h</span></div>
-          <div class="stat-n">n = 241 approvals to carrier</div>
+    <!-- Row 1: Weekly submissions -->
+    <div class="chart-grid row-full mb20">
+      <div class="card">
+        <h2>Weekly Submissions</h2>
+        <div class="subtitle">Total unique submissions (new ResourceOrderUuids) vs. senders submitted for the first time each week</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="weeklyChart"></canvas>
         </div>
       </div>
     </div>
-    <div class="card">
-      <h2>Pipeline Timing — Mean by Week</h2>
-      <div class="subtitle">Weekly mean hours per stage; note rejection mean is skewed by outliers</div>
-      <div class="chart-wrap" style="height:340px">
-        <canvas id="ibTimingWowChart"></canvas>
-      </div>
-    </div>
-  </div>
 
-  <!-- Row 4: IB throughput + Pending by week donut -->
-  <div class="chart-grid mb20" style="grid-template-columns: 2fr 1fr;">
-    <div class="card">
-      <h2>Infobip Throughput — Received vs. Completed</h2>
-      <div class="subtitle">Received = new submissions entering state 1 by event week. Completed = IB decisions (sent to carrier or rejected), split by whether the submission arrived the same week or a prior week.</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="ibThroughputChart"></canvas>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Pending IB Review — by Submission Week</h2>
-      <div class="subtitle" id="pendingByWeekSubtitle">277 senders currently pending, broken out by when they submitted</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="pendingByWeekChart"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <!-- Row 5: Top rejection reasons + WoW side by side -->
-  <div class="chart-grid mb20" style="grid-template-columns: 1fr 2fr;">
-    <div class="card">
-      <h2>Top Rejection Reasons (All-time)</h2>
-      <div class="subtitle">Based on rejection_reason_combined — includes cancelled rows; distinct senderNames per category</div>
-      <div class="chart-wrap" style="height:360px">
-        <canvas id="rejCatChart"></canvas>
-      </div>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <h2>Rejection Reasons — Week over Week</h2>
-        <div style="display:flex;background:#f1f5f9;border-radius:6px;padding:3px;gap:2px;">
-          <button id="wowToggleCount" onclick="setWowMode('count')" style="background:#6366f1;color:white;border:none;border-radius:4px;padding:4px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;"># Count</button>
-          <button id="wowTogglePct" onclick="setWowMode('pct')" style="background:transparent;color:#64748b;border:none;border-radius:4px;padding:4px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;">% Share</button>
+    <!-- Weekly output -->
+    <div class="chart-grid row-full mb20">
+      <div class="card">
+        <h2>Weekly Output</h2>
+        <div class="subtitle">IB decisions by event week — when rejections and carrier approvals actually occurred</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="weeklyOutputChart"></canvas>
         </div>
       </div>
-      <div class="subtitle" id="wowSubtitle">Category counts per submission week (stacked); based on rejection_reason_combined</div>
-      <div class="chart-wrap" style="height:360px">
-        <canvas id="rejWowChart"></canvas>
+    </div>
+
+    <!-- Row 2: Status donut + Approved vs Rejected donut -->
+    <div class="chart-grid row-2 mb20">
+      <div class="card">
+        <h2>Current Status Breakdown <span style="font-size:0.75rem;font-weight:500;color:#94a3b8;">(where things stand today)</span></h2>
+        <div class="subtitle">Each brand counted once at their most recent status — not a tally of all transitions. 1,001 total brands.</div>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Resolved: Approved vs. Rejected</h2>
+        <div class="subtitle">Brands with a final outcome — 519 resolved (78 approved, 441 rejected)</div>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="resolvedChart"></canvas>
+        </div>
       </div>
     </div>
-  </div>
 
-
-  <!-- Carrier Review Duration Chart -->
-  <div class="chart-grid row-full mb20">
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <h2 style="margin:0">Senders Currently In Carrier Review — Duration Distribution</h2>
-        <button class="copy-btn" onclick="copyAllCarrierRecords()">Copy All Records</button>
+    <!-- Row 4: IB throughput + Pending by week donut -->
+    <div class="chart-grid mb20" style="grid-template-columns: 2fr 1fr;">
+      <div class="card">
+        <h2>Infobip Throughput — Received vs. Completed</h2>
+        <div class="subtitle">Received = new submissions entering state 1 by event week. Completed = IB decisions (sent to carrier or rejected), split by whether the submission arrived the same week or a prior week.</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="ibThroughputChart"></canvas>
+        </div>
       </div>
-      <div class="subtitle">Each bar = number of senders who have been in carrier review for that many days. Click a bar to see the list. 169 total senders.</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="carrierDurChart"></canvas>
+      <div class="card">
+        <h2>Pending IB Review — by Submission Week</h2>
+        <div class="subtitle" id="pendingByWeekSubtitle">277 senders currently pending, broken out by when they submitted</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="pendingByWeekChart"></canvas>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- IB Review Duration Chart -->
-  <div class="chart-grid row-full mb20">
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <h2 style="margin:0">Senders Currently Pending IB Review — Duration Distribution</h2>
-        <button class="copy-btn" onclick="copyAllIbRecords()">Copy All Records</button>
+    <!-- Row 5: Top rejection reasons + WoW side by side -->
+    <div class="chart-grid mb20" style="grid-template-columns: 1fr 2fr;">
+      <div class="card">
+        <h2>Top Rejection Reasons (All-time)</h2>
+        <div class="subtitle">Based on rejection_reason_combined — includes cancelled rows; distinct senderNames per category</div>
+        <div class="chart-wrap" style="height:360px">
+          <canvas id="rejCatChart"></canvas>
+        </div>
       </div>
-      <div class="subtitle" id="ibSubtitle">Each bar = number of senders who have been in IB review for that many days. Click a bar to see the list. 424 total senders.</div>
-      <div class="chart-wrap" style="height:300px">
-        <canvas id="ibDurChart"></canvas>
-      </div>
-    </div>
-  </div>
-  <!-- Rejection Records Table -->
-  <div class="chart-grid row-full mb20">
-    <div class="card">
-      <h2>All Rejection Records</h2>
-      <div class="subtitle">Every rejection event with current sender status. <span id="rejTblCount"></span></div>
-      <div class="filter-bar">
-        <div class="filter-group">
-          <label>Category</label>
-          <div class="cs-wrap" id="cs-cat">
-            <button class="cs-btn" id="cs-cat-btn">All Categories</button>
-            <div class="cs-panel"><div class="cs-list" id="cs-cat-list"></div></div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <h2>Rejection Reasons — Week over Week</h2>
+          <div style="display:flex;background:#f1f5f9;border-radius:6px;padding:3px;gap:2px;">
+            <button id="wowToggleCount" onclick="setWowMode('count')" style="background:#6366f1;color:white;border:none;border-radius:4px;padding:4px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;"># Count</button>
+            <button id="wowTogglePct" onclick="setWowMode('pct')" style="background:transparent;color:#64748b;border:none;border-radius:4px;padding:4px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;">% Share</button>
           </div>
         </div>
-        <div class="filter-group">
-          <label>Week</label>
-          <div class="cs-wrap" id="cs-week">
-            <button class="cs-btn" id="cs-week-btn">All Weeks</button>
-            <div class="cs-panel"><div class="cs-list" id="cs-week-list"></div></div>
+        <div class="subtitle" id="wowSubtitle">Category counts per submission week (stacked); based on rejection_reason_combined</div>
+        <div class="chart-wrap" style="height:360px">
+          <canvas id="rejWowChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-summary -->
+
+  <!-- ===================== INFOBIP PIPELINE TAB ===================== -->
+  <div class="tab-panel" id="tab-ib-pipeline">
+
+    <!-- Row 3: Infobip pipeline timing stats + weekly means line chart -->
+    <div class="chart-grid mb20" style="grid-template-columns: 0.3fr 0.7fr;">
+      <div class="card">
+        <h2>Infobip Pipeline Timing</h2>
+        <div class="subtitle">Duration statistics by stage (all-time)</div>
+        <div class="stat-cards">
+          <div class="stat-card wait">
+            <h3>Wait before IB picks up (State 2)</h3>
+            <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">163.8 h</span></div>
+            <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">413.7 h</span></div>
+            <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">484.9 h</span></div>
+            <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">231.2 h</span></div>
+            <div class="stat-n">n = 662 transitions</div>
+          </div>
+          <div class="stat-card rej">
+            <h3>IB review time → Rejected (State 4-REJ)</h3>
+            <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">0.0 h</span></div>
+            <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">0.5 h</span></div>
+            <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">29.9 h</span></div>
+            <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">28.2 h</span></div>
+            <div class="stat-n">n = 867 rejections · 79% resolved in &lt;1h; mean skewed by long tail</div>
+          </div>
+          <div class="stat-card app">
+            <h3>IB review time → Carrier (State 3)</h3>
+            <div class="stat-row"><span class="stat-name">Median (p50)</span><span class="stat-val">0.1 h</span></div>
+            <div class="stat-row"><span class="stat-name">p75</span><span class="stat-val">0.3 h</span></div>
+            <div class="stat-row"><span class="stat-name">p90</span><span class="stat-val">1.8 h</span></div>
+            <div class="stat-row"><span class="stat-name">Mean</span><span class="stat-val">2.3 h</span></div>
+            <div class="stat-n">n = 241 approvals to carrier</div>
           </div>
         </div>
-        <div class="filter-group">
-          <label>Sender</label>
-          <div class="cs-wrap" id="cs-sender">
-            <button class="cs-btn" id="cs-sender-btn">All Senders</button>
-            <div class="cs-panel">
-              <div class="cs-search"><input type="text" id="cs-sender-search" placeholder="Search sender…" autocomplete="off"></div>
-              <div class="cs-list" id="cs-sender-list"></div>
+      </div>
+      <div class="card">
+        <h2>Pipeline Timing — Mean by Week</h2>
+        <div class="subtitle">Weekly mean hours per stage; note rejection mean is skewed by outliers</div>
+        <div class="chart-wrap" style="height:340px">
+          <canvas id="ibTimingWowChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-ib-pipeline -->
+
+  <!-- ===================== REJECTION TRACKING TAB ===================== -->
+  <div class="tab-panel" id="tab-rej-tracking">
+
+    <!-- Rejection Records Table -->
+    <div class="chart-grid row-full mb20">
+      <div class="card">
+        <h2>All Rejection Records</h2>
+        <div class="subtitle">Every rejection event with current sender status. <span id="rejTblCount"></span></div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Category</label>
+            <div class="cs-wrap" id="cs-cat">
+              <button class="cs-btn" id="cs-cat-btn">All Categories</button>
+              <div class="cs-panel"><div class="cs-list" id="cs-cat-list"></div></div>
             </div>
           </div>
-        </div>
-        <div class="filter-group">
-          <label>Entity</label>
-          <div class="cs-wrap" id="cs-entity">
-            <button class="cs-btn" id="cs-entity-btn">All Entities</button>
-            <div class="cs-panel">
-              <div class="cs-search"><input type="text" id="cs-entity-search" placeholder="Search entity…" autocomplete="off"></div>
-              <div class="cs-list" id="cs-entity-list"></div>
+          <div class="filter-group">
+            <label>Week</label>
+            <div class="cs-wrap" id="cs-week">
+              <button class="cs-btn" id="cs-week-btn">All Weeks</button>
+              <div class="cs-panel"><div class="cs-list" id="cs-week-list"></div></div>
             </div>
           </div>
+          <div class="filter-group">
+            <label>Sender</label>
+            <div class="cs-wrap" id="cs-sender">
+              <button class="cs-btn" id="cs-sender-btn">All Senders</button>
+              <div class="cs-panel">
+                <div class="cs-search"><input type="text" id="cs-sender-search" placeholder="Search sender…" autocomplete="off"></div>
+                <div class="cs-list" id="cs-sender-list"></div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Entity</label>
+            <div class="cs-wrap" id="cs-entity">
+              <button class="cs-btn" id="cs-entity-btn">All Entities</button>
+              <div class="cs-panel">
+                <div class="cs-search"><input type="text" id="cs-entity-search" placeholder="Search entity…" autocomplete="off"></div>
+                <div class="cs-list" id="cs-entity-list"></div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Rejection Reason</label>
+            <input type="text" id="rejReasonSearch" placeholder="Search reason text…" autocomplete="off"
+              style="border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:0.78rem;font-family:inherit;outline:none;min-width:200px;"
+              onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+          </div>
+          <button class="filter-clear-btn" id="rejClearBtn">Clear filters</button>
         </div>
-        <div class="filter-group">
-          <label>Rejection Reason</label>
-          <input type="text" id="rejReasonSearch" placeholder="Search reason text…" autocomplete="off"
-            style="border:1px solid #e2e8f0;border-radius:6px;padding:7px 10px;font-size:0.78rem;font-family:inherit;outline:none;min-width:200px;"
-            onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+        <div class="chart-wrap" style="height:110px;margin-bottom:16px;">
+          <canvas id="rejTrendChart"></canvas>
         </div>
-        <button class="filter-clear-btn" id="rejClearBtn">Clear filters</button>
+        <div class="rej-tbl-wrap">
+          <table class="rej-tbl">
+            <thead>
+              <tr>
+                <th>Sender ID</th>
+                <th>Entity</th>
+                <th>Company</th>
+                <th>Week</th>
+                <th>Rejection Category</th>
+                <th>Rejection Reason</th>
+                <th>Current Status</th>
+                <th>Combined MRR</th>
+              </tr>
+            </thead>
+            <tbody id="rejTblBody"></tbody>
+          </table>
+        </div>
+        <div class="rej-footer" id="rejTblFooter"></div>
       </div>
-      <div class="chart-wrap" style="height:110px;margin-bottom:16px;">
-        <canvas id="rejTrendChart"></canvas>
-      </div>
-      <div class="rej-tbl-wrap">
-        <table class="rej-tbl">
-          <thead>
-            <tr>
-              <th>Sender ID</th>
-              <th>Entity</th>
-              <th>Company</th>
-              <th>Week</th>
-              <th>Rejection Category</th>
-              <th>Rejection Reason</th>
-              <th>Current Status</th>
-              <th>Combined MRR</th>
-            </tr>
-          </thead>
-          <tbody id="rejTblBody"></tbody>
-        </table>
-      </div>
-      <div class="rej-footer" id="rejTblFooter"></div>
     </div>
-  </div>
+
+  </div><!-- /tab-rej-tracking -->
+
+  <!-- ===================== PENDING CUSTOMERS TAB ===================== -->
+  <div class="tab-panel" id="tab-pending">
+
+    <!-- Carrier Review Duration Chart -->
+    <div class="chart-grid row-full mb20">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0">Senders Currently In Carrier Review — Duration Distribution</h2>
+          <button class="copy-btn" onclick="copyAllCarrierRecords()">Copy All Records</button>
+        </div>
+        <div class="subtitle">Each bar = number of senders who have been in carrier review for that many days. Click a bar to see the list. 169 total senders.</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="carrierDurChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- IB Review Duration Chart -->
+    <div class="chart-grid row-full mb20">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0">Senders Currently Pending IB Review — Duration Distribution</h2>
+          <button class="copy-btn" onclick="copyAllIbRecords()">Copy All Records</button>
+        </div>
+        <div class="subtitle" id="ibSubtitle">Each bar = number of senders who have been in IB review for that many days. Click a bar to see the list. 424 total senders.</div>
+        <div class="chart-wrap" style="height:300px">
+          <canvas id="ibDurChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-pending -->
 
 </div><!-- /container -->
 
@@ -1663,6 +1700,24 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal
   document.getElementById('mrr-approved').textContent = fmt(avgSmMrr(approvedRecs));
   document.getElementById('mrr-rejected').textContent = fmt(avgSmMrr(rejectedRecs));
 })();
+
+// ── Tab switcher ──────────────────────────────────────────────────────────────
+function showTab(name) {
+  // Update button states
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick') === "showTab('" + name + "')");
+  });
+  // Update panel visibility
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.remove('tab-active');
+  });
+  const target = document.getElementById('tab-' + name);
+  if (target) {
+    target.classList.add('tab-active');
+    // Fix Chart.js dimensions after revealing hidden panel
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }
+}
 </script>
 </body>
 </html>
